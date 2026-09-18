@@ -21,7 +21,16 @@ import { Rng, seedOf } from './rng.js';
 // sigma is the mutation step for that gene, as a fraction of its [0,1] range.
 // Form genes step further than stat genes: a silhouette that shifts visibly is
 // the whole point of a mutation you are meant to notice and choose.
-const G = (key, group, sigma) => ({ key, group, sigma });
+//
+// `flat` marks genes that must be drawn UNIFORMLY in a founder rather than
+// from the usual bell. Two kinds qualify. Hue, because a bell around 0.5 puts
+// every founder in the same blue-green wedge and a starting population that is
+// all one colour has nothing for selection to work with. And every gene that
+// maps to a discrete choice -- damage type, ability, leg count, weapon shape --
+// because a bell over a list makes the middle entries common and the ends
+// nearly unreachable, so a founder population would simply never contain some
+// of the abilities the game ships with.
+const G = (key, group, sigma, flat = false) => ({ key, group, sigma, flat });
 
 export const GENE_SPEC = [
   // --- statistics -----------------------------------------------------------
@@ -32,14 +41,14 @@ export const GENE_SPEC = [
   G('speed', 'stat', 0.09),
   G('rate', 'stat', 0.09),
   G('splash', 'stat', 0.10),
-  G('damageType', 'stat', 0.13),
-  G('armorClass', 'stat', 0.13),
-  G('ability', 'stat', 0.12),
-  G('targeting', 'stat', 0.12),
-  G('brood', 'stat', 0.12),
+  G('damageType', 'stat', 0.13, true),
+  G('armorClass', 'stat', 0.13, true),
+  G('ability', 'stat', 0.12, true),
+  G('targeting', 'stat', 0.12, true),
+  G('brood', 'stat', 0.12, true),
 
   // --- colour ---------------------------------------------------------------
-  G('hue', 'color', 0.07),
+  G('hue', 'color', 0.07, true),
   G('sat', 'color', 0.10),
   G('light', 'color', 0.08),
   G('accent', 'color', 0.11),
@@ -52,12 +61,12 @@ export const GENE_SPEC = [
   G('neck', 'form', 0.12),
   G('headSize', 'form', 0.12),
   G('headShape', 'form', 0.14),
-  G('eyeCount', 'form', 0.16),
+  G('eyeCount', 'form', 0.16, true),
   G('eyeSize', 'form', 0.13),
   G('jaw', 'form', 0.14),
 
   // --- limbs ----------------------------------------------------------------
-  G('legCount', 'form', 0.15),
+  G('legCount', 'form', 0.15, true),
   G('legLength', 'form', 0.12),
   G('legWidth', 'form', 0.12),
   G('legSplay', 'form', 0.13),
@@ -72,10 +81,10 @@ export const GENE_SPEC = [
   G('tailLength', 'form', 0.14),
   G('tailCurl', 'form', 0.15),
   G('wingSpan', 'form', 0.13),
-  G('wingShape', 'form', 0.14),
-  G('pattern', 'form', 0.15),
+  G('wingShape', 'form', 0.14, true),
+  G('pattern', 'form', 0.15, true),
   G('patternDensity', 'form', 0.13),
-  G('weaponShape', 'form', 0.15),
+  G('weaponShape', 'form', 0.15, true),
   G('weaponSize', 'form', 0.13),
 
   // --- animation ------------------------------------------------------------
@@ -115,7 +124,9 @@ export function makeGenomeId(rng) {
 export function randomGenome(archetypeId, seed) {
   const rng = new Rng(seedOf(seed) ^ 0x47454e45);
   const genes = {};
-  for (const spec of GENE_SPEC) genes[spec.key] = clamp01(rng.bell());
+  for (const spec of GENE_SPEC) {
+    genes[spec.key] = clamp01(spec.flat ? rng.float() : rng.bell());
+  }
   return {
     id: makeGenomeId(rng),
     archetype: archetypeId,

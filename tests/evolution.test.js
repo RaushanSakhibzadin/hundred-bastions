@@ -375,6 +375,32 @@ test('mutations are reported in terms a player can read', () => {
   for (const d of diffs) assert.ok(GENE_KEYS.includes(d.key));
 });
 
+test('founder populations span the whole design space', () => {
+  // Regression test. Founders drew every gene from a bell, which put every
+  // starting creature in the same blue-green wedge and made the rarer
+  // abilities and leg counts almost unreachable. A starting population that
+  // is all one colour gives selection nothing to select between.
+  const hueBins = new Array(6).fill(0);
+  const abilities = new Set();
+  const damageTypes = new Set();
+  const legCounts = new Set();
+
+  for (let i = 0; i < 3000; i++) {
+    const u = unitFromGenome(randomGenome(ARCHETYPES[i % ARCHETYPES.length].id, i), 1);
+    hueBins[Math.min(5, Math.floor(u.genome.genes.hue * 6))]++;
+    abilities.add(u.ability);
+    damageTypes.add(u.damageType);
+    legCounts.add(Math.min(5, Math.floor(u.genome.genes.legCount * 6)));
+  }
+
+  for (const n of hueBins) {
+    assert.ok(n > 3000 / 6 * 0.7, `hue is not uniform across the circle: ${hueBins.join(', ')}`);
+  }
+  assert.equal(damageTypes.size, 3, 'not every damage type appears in a founder population');
+  assert.ok(abilities.size >= 7, `only ${abilities.size} abilities appeared: ${[...abilities]}`);
+  assert.ok(legCounts.size >= 5, `leg counts barely varied: ${[...legCounts]}`);
+});
+
 test('the gene groups are all populated', () => {
   for (const group of ['stat', 'form', 'color', 'anim']) {
     assert.ok(genesOfGroup(group).length >= 4, `group ${group} has too few genes`);
