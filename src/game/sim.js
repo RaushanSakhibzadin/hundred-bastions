@@ -15,7 +15,7 @@
 //     not yet been engaged. A misread is a decision you get to revise instead
 //     of an attack you have to sit through.
 
-import { resolveDamage, effectiveHp } from '../core/balance.js';
+import { resolveDamage } from '../core/balance.js';
 import { STRUCTURE_BY_ID, structureHp, defenseStats } from './structures.js';
 
 export const TICK_HZ = 30;

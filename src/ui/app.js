@@ -5,7 +5,7 @@ import * as Base from '../game/base.js';
 import * as Roster from '../game/roster.js';
 import { STRUCTURES, STRUCTURE_BY_ID, structureCost, structureHp, structureUpkeep,
          defenseStats, structureProduction, structureStorage, structureSupply } from '../game/structures.js';
-import { generateBastion, scout, LAYOUT_STYLES } from '../game/bastion.js';
+import { generateBastion, scout } from '../game/bastion.js';
 import * as Sim from '../game/sim.js';
 import { unitSprite } from './sprites.js';
 import * as R from './render.js';

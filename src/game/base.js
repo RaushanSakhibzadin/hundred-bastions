@@ -6,7 +6,7 @@
 // question is never "how long until this finishes", it is "can this holding
 // carry another tower", which is a decision rather than a wait.
 
-import { STRUCTURE_BY_ID, structureCost, structureHp, structureUpkeep,
+import { STRUCTURE_BY_ID, structureCost, structureUpkeep,
          structureProduction, structureStorage, structureSupply } from './structures.js';
 
 export const GRID_W = 44;
