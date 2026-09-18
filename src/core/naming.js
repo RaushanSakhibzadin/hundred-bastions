@@ -4,6 +4,12 @@
 // This builds them from a syllable grammar weighted per archetype, so a
 // Colossus sounds heavy and a Skirmisher sounds quick -- without any list of
 // hand-written names to run out of.
+//
+// Names are built from the GENOME, not from a hash of the unit's identity. So
+// a child's name is a mutation of its parents' names, the way its body is a
+// mutation of their bodies: breed Vrakgun long enough and you get a line of
+// Vrakguns, Vrakgars and Brakguns. Nothing implements family names; they are
+// what you get for free once the name is a phenotype like any other.
 
 import { Rng, seedOf } from './rng.js';
 
@@ -81,18 +87,43 @@ function epithetKey(unit) {
   return best;
 }
 
+// Index a list by a gene, so a small gene change usually keeps the syllable
+// and occasionally steps to the neighbouring one.
+const byGene = (list, gene) => list[Math.min(list.length - 1, Math.floor(gene * list.length))];
+
 export function nameUnit(unit) {
-  const rng = new Rng(seedOf(unit.seed) ^ 0x4e414d45);
   const flavour = FLAVOUR[unit.archetype] ?? 'sharp';
   const key = epithetKey(unit);
 
-  // Separate streams per part. Sharing one stream made names correlate across
-  // nearby seeds -- three different Marksmen all came out "Overwatch".
+  if (!unit.genome) return legacyName(unit, flavour, key);
+  const g = unit.genome.genes;
+
+  // Each part of the name is carried by a specific gene. Which genes is
+  // arbitrary; that they are *stable* genes is not, because that is what makes
+  // the name heritable.
+  const onset = byGene(ONSET[flavour], g.hue);
+  const mid = (!VOWEL.test(onset) && g.torsoW > 0.45) ? byGene(MID, g.torsoH) : '';
+  const coda = byGene(CODA[flavour], g.legCount);
+  const s = cap((onset + mid + coda).replace(/([aeiouy]{2})[aeiouy]+/g, '$1'));
+
+  const ep = byGene(EPITHET[key], g.pattern);
+  const tw = byGene(TYPE_WORD[unit.damageType], g.accent);
+
+  switch (Math.floor(g.headShape * 4)) {
+    case 0: return `${s} ${ep}`;
+    case 1: return `${ep} ${s}`;
+    case 2: return `${s} ${tw}`;
+    default: return `${s} of the ${ep}`;
+  }
+}
+
+// Units built straight from a seed, with no genome, still need a name.
+function legacyName(unit, flavour, key) {
+  const rng = new Rng(seedOf(unit.seed) ^ 0x4e414d45);
   const form = rng.int(0, 3);
   const s = stem(rng.fork('stem'), flavour);
   const ep = rng.fork('epithet').pick(EPITHET[key]);
   const tw = rng.fork('type').pick(TYPE_WORD[unit.damageType]);
-
   switch (form) {
     case 0: return `${s} ${ep}`;
     case 1: return `${ep} ${s}`;

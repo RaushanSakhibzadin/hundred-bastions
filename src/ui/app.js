@@ -7,8 +7,10 @@ import { STRUCTURES, STRUCTURE_BY_ID, structureCost, structureHp, structureUpkee
          defenseStats, structureProduction, structureStorage, structureSupply } from '../game/structures.js';
 import { generateBastion, scout } from '../game/bastion.js';
 import * as Sim from '../game/sim.js';
-import { unitSprite } from './sprites.js';
 import * as R from './render.js';
+import { attachPortrait, creatureToSVG } from './creature.js';
+import * as Lineage from '../game/lineage.js';
+import { notableDifferences, expressedGenes } from '../core/genome.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -20,6 +22,11 @@ const el = (tag, cls, text) => {
 const fmt = (n) => Math.floor(n).toLocaleString('en-US');
 
 export const DEPLOY_MARGIN = 5; // tiles from the edge you may land a squad in
+
+// A genome's name, without building the whole unit around it.
+function nameOfGenome(genome, level = 1) {
+  return Roster.makeUnit(genome, level).name;
+}
 
 export function boot() {
   const state = Save.load();
@@ -340,6 +347,25 @@ function renderStructureInspector(app) {
 // Warband screen
 // ---------------------------------------------------------------------------
 
+// Bodies currently fielded, per genome. Feeds the affinity calculation: a
+// creature you are actually using right now counts for something.
+function warbandBodies(app) {
+  const out = {};
+  for (const w of app.state.warband) {
+    const u = app.state.units[w.rosterIndex];
+    if (u) out[u.genome.id] = (out[u.genome.id] ?? 0) + w.count;
+  }
+  return out;
+}
+
+// Every preference signal in the game funnels through here, so there is one
+// place to look when asking why the gene pool moved.
+function noteInteraction(app, unit, kind, amount = 1) {
+  if (!unit?.genome) return;
+  Lineage.admit(app.state.lineage, unit.genome);
+  Lineage.note(app.state.lineage, unit.genome.id, kind, amount);
+}
+
 function currentWarband(app) {
   const { state } = app;
   return state.warband
@@ -347,18 +373,51 @@ function currentWarband(app) {
     .filter((w) => w.unit);
 }
 
-function unitCard(app, unit, rosterIndex) {
+function unitCard(app, unit, rosterIndex, { candidate = null } = {}) {
   const card = el('div', 'unit-card');
   const art = el('div', 'uc-art');
-  const img = unitSprite(unit, 4);
-  const c = el('canvas'); c.width = img.width; c.height = img.height;
-  c.getContext('2d').drawImage(img, 0, 0);
+  const c = el('canvas', 'portrait');
   art.append(c);
+  // The canvas has to be in the document before it has a measurable size.
+  requestAnimationFrame(() => attachPortrait(c, unit));
 
   const body = el('div', 'uc-body');
   body.append(el('div', 'uc-name', unit.name));
-  body.append(el('div', 'uc-sub', `${unit.archetypeLabel} · level ${unit.level} · ${unit.supply} supply${unit.count > 1 ? ` · ${unit.count} bodies` : ''}`));
+  const gen = unit.genome.generation;
+  body.append(el('div', 'uc-sub',
+    `${unit.archetypeLabel} · level ${unit.level} · ${unit.supply} supply` +
+    `${unit.count > 1 ? ` · ${unit.count} bodies` : ''}` +
+    `${gen > 0 ? ` · generation ${gen}` : ' · founder'}`));
   body.append(el('div', 'uc-role', unit.role));
+
+  // What this creature inherited, and what mutated. Evolution you cannot see
+  // happening is indistinguishable from randomness.
+  if (candidate) {
+    const prov = el('div', 'uc-prov');
+    if (candidate.origin === 'immigrant') {
+      prov.append(el('div', 'prov-line', 'Unrelated stock. Fresh genes, no inheritance.'));
+    } else if (candidate.parents.length) {
+      const names = candidate.parents.map((g) => {
+        const rec = Lineage.findRecord(app.state.lineage, g.id);
+        return rec ? nameOfGenome(g, unit.level) : 'a lost line';
+      });
+      const twoParents = candidate.parents.length > 1
+        && candidate.parents[0].id !== candidate.parents[1].id;
+      prov.append(el('div', 'prov-line',
+        !twoParents ? `Mutated from ${names[0]}.`
+          // Names are heritable, so two different parents from the same line
+          // often share one. "Bred from X and X" reads like a bug.
+          : names[0] === names[1] ? `Bred from two of the ${names[0]} line.`
+            : `Bred from ${names[0]} and ${names[1]}.`));
+      const diffs = notableDifferences(unit.genome, candidate.parents[0], 3, expressedGenes(unit));
+      if (diffs.length) {
+        prov.append(el('div', 'prov-line mut',
+          'Mutations: ' + diffs.map((d) =>
+            Lineage.describeGene(d.key, d.delta > 0 ? 1 : 0)).join(', ') + '.'));
+      }
+    }
+    body.append(prov);
+  }
 
   const chips = el('div', 'chips');
   chips.append(el('span', `chip dt-${unit.damageType}`, unit.damageType));
@@ -394,6 +453,14 @@ function renderWarband(app) {
   rosterBox.innerHTML = '';
   state.units.forEach((unit, i) => {
     const card = unitCard(app, unit, i);
+    // Opening a card is the weakest signal in the system, and deliberately so:
+    // curiosity is not preference. It is counted once per card per visit.
+    card.addEventListener('click', () => {
+      if (card.dataset.noted) return;
+      card.dataset.noted = '1';
+      noteInteraction(app, unit, 'inspections');
+      Save.save(state);
+    }, { once: true });
     const actions = el('div', 'row');
 
     const inBand = state.warband.find((w) => w.rosterIndex === i);
@@ -433,6 +500,9 @@ function renderWarband(app) {
       state.base.resources.ore -= cost.ore;
       state.base.resources.flux -= cost.flux;
       state.roster[i].level++;
+      // Spending resources on a creature is the most honest thing you can do
+      // about it short of taking it to war.
+      noteInteraction(app, unit, 'levelUps');
       Save.hydrate(state);
       Save.save(state); renderWarband(app); renderChrome(app);
       toast(app, `${unit.name} is now level ${state.roster[i].level}.`);
@@ -443,6 +513,7 @@ function renderWarband(app) {
       const dis = el('button', 'danger', 'Dismiss');
       dis.addEventListener('click', () => {
         if (!confirm(`Dismiss ${unit.name}? This cannot be undone.`)) return;
+        noteInteraction(app, unit, 'dismissed');
         state.roster.splice(i, 1);
         state.warband = state.warband
           .filter((w) => w.rosterIndex !== i)
@@ -472,28 +543,83 @@ function renderRecruit(app) {
   const { state } = app;
   const box = $('#recruit-list');
   box.innerHTML = '';
-  const candidates = Roster.rollCandidates(state.rollSeed, { forbid: state.roster.map((r) => r.seed) });
+
+  const bodies = warbandBodies(app);
+  const candidates = Lineage.offerCandidates(state.lineage, {
+    count: 3, warbandBodies: bodies, seed: state.lineage.offerSeed,
+  });
+  app.offer = candidates;
 
   $('#recruit-cost').textContent = `${fmt(Roster.RECRUIT_COST.flux)} flux to take one`;
 
-  for (const unit of candidates) {
-    const card = unitCard(app, unit, -1);
+  candidates.forEach((cand, i) => {
+    const unit = Roster.makeUnit(cand.genome, 1);
+    const card = unitCard(app, unit, -1, { candidate: cand });
     const take = el('button', 'primary', 'Recruit');
     take.addEventListener('click', () => {
       if (state.base.resources.flux < Roster.RECRUIT_COST.flux) {
         return toast(app, 'Not enough flux to recruit.', true);
       }
       state.base.resources.flux -= Roster.RECRUIT_COST.flux;
-      state.roster.push({ seed: unit.seed, level: 1 });
-      state.rollSeed = (state.rollSeed * 1664525 + 1013904223) >>> 0;
-      Save.hydrate(state); Save.save(state); renderWarband(app); renderChrome(app);
-      toast(app, `${unit.name} joined the holding.`);
+      // Taking one and passing on two is the cleanest preference signal this
+      // game will ever get, so all three outcomes are recorded.
+      Lineage.resolveOffer(state.lineage, candidates, i);
+      state.roster.push({ genome: cand.genome, level: 1 });
+      Save.hydrate(state); Save.save(state);
+      renderWarband(app); renderChrome(app);
+      toast(app, `${unit.name} joined the holding. Its line continues.`);
     });
     const row = el('div', 'row');
     row.append(take);
     card.querySelector('.uc-body').append(row);
     box.append(card);
+  });
+
+  renderTaste(app);
+}
+
+// What the game thinks you like.
+//
+// This panel exists because an adaptive system you cannot inspect is
+// indistinguishable from a broken one. If the pool has drifted somewhere you
+// did not intend, you should be able to see that and push back on it.
+function renderTaste(app) {
+  const box = $('#taste');
+  box.innerHTML = '';
+  const bodies = warbandBodies(app);
+  const lineage = app.state.lineage;
+
+  // A class needs a few data points before its "settled traits" mean
+  // anything. With two creatures in a pool every gene looks unanimous, and
+  // reporting that as a learned preference is just noise with a confident face.
+  const MIN_EVIDENCE = 4;
+  const lines = [];
+  for (const arch of new Set(app.state.units.map((u) => u.archetype))) {
+    const rep = Lineage.lineageReport(lineage, arch, bodies);
+    if (!rep || !rep.settled.length || rep.size < MIN_EVIDENCE) continue;
+    lines.push({ arch, rep });
   }
+
+  if (!lineage.births) {
+    box.append(el('p', 'hint',
+      'Nothing learned yet. Recruit a few times and this will fill in: every creature you take, level, field or dismiss moves the gene pool.'));
+    return;
+  }
+
+  box.append(el('div', 'wb-line', `${lineage.births} recruitments have shaped the pool.`));
+  if (!lines.length) {
+    box.append(el('p', 'hint',
+      'Not enough evidence yet. A class needs a few creatures in its pool before its preferences mean anything, and so far yours pull in different directions.'));
+    return;
+  }
+  for (const { arch, rep } of lines) {
+    const label = arch.charAt(0).toUpperCase() + arch.slice(1);
+    box.append(el('div', 'taste-arch', `${label} — from ${rep.size} creatures`));
+    box.append(el('div', 'taste-list',
+      rep.settled.map((g) => Lineage.describeGene(g.key, g.mean)).join(' · ')));
+  }
+  box.append(el('p', 'fineprint',
+    'Offers are bred from the creatures you have treated well, so these traits will keep appearing. Roughly one candidate in five ignores all of it and arrives with fresh genes, which is what stops the pool collapsing into one creature.'));
 }
 
 // ---------------------------------------------------------------------------
@@ -628,10 +754,9 @@ function renderDeployBar(app) {
   b.warband.forEach((slot, i) => {
     const left = Math.floor(b.remaining[i]);
     const btn = el('button', 'slot' + (i === app.siege.selected ? ' picked' : '') + (left <= 0 ? ' empty' : ''));
-    const img = unitSprite(slot.unit, 2);
-    const c = el('canvas'); c.width = img.width; c.height = img.height;
-    c.getContext('2d').drawImage(img, 0, 0);
+    const c = el('canvas', 'slot-art');
     btn.append(c);
+    requestAnimationFrame(() => attachPortrait(c, slot.unit, { pad: 1.05 }));
     btn.append(el('span', 'slot-count', `x${left}`));
     btn.append(el('span', 'slot-key', String(i + 1)));
     btn.title = `${slot.unit.name} — ${slot.unit.archetypeLabel}`;
@@ -671,6 +796,29 @@ function endSiege(app) {
   const b = app.siege.battle;
   const result = b.result ?? Sim.score(b);
   const { state } = app;
+
+  // What you brought, and how long it lasted. Choosing to field a creature is
+  // a preference signal; surviving long enough to matter is a weaker one, but
+  // it is the difference between a unit you keep bringing and one you quietly
+  // stop bringing.
+  const deployed = new Map();
+  for (const cmd of b.commands) {
+    if (cmd.type !== 'deploy') continue;
+    deployed.set(cmd.i, (deployed.get(cmd.i) ?? 0) + 1);
+  }
+  const fielded = new Map();
+  for (const e of b.entities) {
+    if (e.side !== 'attacker') continue;
+    const end = e.deathTick ?? b.tick;
+    fielded.set(e.warbandIndex, (fielded.get(e.warbandIndex) ?? 0) + (end - e.spawnTick) / Sim.TICK_HZ);
+  }
+  for (const [i, n] of deployed) {
+    noteInteraction(app, b.warband[i]?.unit, 'deployments', n);
+  }
+  for (const [i, secs] of fielded) {
+    noteInteraction(app, b.warband[i]?.unit, 'secondsFielded', Math.round(secs));
+  }
+  Lineage.prune(state.lineage, new Set(state.roster.map((r) => r.genome.id)));
 
   state.base.resources.ore = Math.min(
     Base.economy(state.base).storage.ore, state.base.resources.ore + result.loot.ore);

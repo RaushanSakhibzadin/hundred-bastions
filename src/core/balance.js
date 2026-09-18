@@ -17,6 +17,7 @@
 // constant.
 
 import { Rng, seedOf } from './rng.js';
+import { randomGenome } from './genome.js';
 
 // ---------------------------------------------------------------------------
 // Constants. Every one of these is a design dial; none of them are magic in
@@ -331,48 +332,65 @@ export function pickArchetype(rng) {
 export function generateUnit(seed, { level = 1, archetypeId = null } = {}) {
   const s = seedOf(seed);
   const rng = new Rng(s);
-
   const arch = archetypeId
     ? (ARCHETYPES.find((a) => a.id === archetypeId) ?? pickArchetype(rng))
     : pickArchetype(rng);
+  return unitFromGenome(randomGenome(arch.id, s), level);
+}
 
-  const supply = rng.int(arch.supply[0], arch.supply[1]);
+// A gene in [0,1] into a discrete choice.
+function choose(gene, n) {
+  return Math.min(n - 1, Math.floor(gene * n));
+}
 
-  // bell() keeps most rolls near the middle of each archetype's band, so
-  // extreme units are rare enough to feel like finds.
-  const lerpB = (a, b) => a + (b - a) * rng.bell();
+// A gene in [0,1] into an archetype band.
+function band(range, gene) {
+  return range[0] + (range[1] - range[0]) * gene;
+}
+
+// genome -> a complete, balanced, renderable unit.
+//
+// Every gene enters through an archetype band and leaves through the same
+// solver as before, which is the property that matters: evolution can push a
+// creature anywhere inside its archetype and cannot move its power off budget.
+// A mutation makes a unit *different*, never *stronger*.
+export function unitFromGenome(genome, level = 1) {
+  const arch = ARCHETYPES.find((a) => a.id === genome.archetype) ?? ARCHETYPES[0];
+  const g = genome.genes;
+
+  const supply = Math.max(1, Math.round(band(arch.supply, g.supply)));
 
   const traits = {
-    range: round2(lerpB(arch.range[0], arch.range[1])),
-    speed: round2(lerpB(arch.speed[0], arch.speed[1])),
-    attackRate: round2(lerpB(arch.attackRate[0], arch.attackRate[1])),
-    splashRadius: round2(lerpB(arch.splash[0], arch.splash[1])),
+    range: round2(band(arch.range, g.range)),
+    speed: round2(band(arch.speed, g.speed)),
+    attackRate: round2(band(arch.attackRate, g.rate)),
+    splashRadius: round2(band(arch.splash, g.splash)),
     flying: !!arch.flying,
-    targeting: rng.pick(arch.targeting),
-    ability: rng.pick(arch.abilities),
+    targeting: arch.targeting[choose(g.targeting, arch.targeting.length)],
+    ability: arch.abilities[choose(g.ability, arch.abilities.length)],
     targets: 1,
   };
 
-  const damageType = rng.pick(DAMAGE_TYPES);
-  const armorClass = rng.pick(ARMOR_CLASSES);
-  const armor = round2(lerpB(arch.armor[0], arch.armor[1]));
-  const offenseShare = round3(lerpB(arch.offense[0], arch.offense[1]));
+  const damageType = DAMAGE_TYPES[choose(g.damageType, DAMAGE_TYPES.length)];
+  const armorClass = ARMOR_CLASSES[choose(g.armorClass, ARMOR_CLASSES.length)];
+  const armor = round2(band(arch.armor, g.armor));
+  const offenseShare = round3(band(arch.offense, g.offense));
 
   const budget = budgetFor(supply, level);
   const stats = solveStats({ budget, traits, offenseShare, armor });
 
-  // 'swarm' is the one ability that changes the unit's body count. The squad
-  // splits the same budget across several smaller bodies -- more total HP is
-  // lost to overkill, which is exactly why kappa charges for it.
-  const count = traits.ability === 'swarm' ? rng.int(3, 5) : 1;
+  // 'swarm' splits the same budget across several smaller bodies. More total
+  // HP is lost to overkill, which is exactly why kappa charges for it.
+  const count = traits.ability === 'swarm' ? 3 + choose(g.brood, 3) : 1;
   if (count > 1) {
     stats.hp = round2(stats.hp / count);
     stats.damage = round2(stats.damage / count);
   }
 
   const unit = {
-    seed: s,
-    id: `u${s.toString(36)}`,
+    genome,
+    seed: seedOf(genome.id),
+    id: genome.id,
     level,
     archetype: arch.id,
     archetypeLabel: arch.label,

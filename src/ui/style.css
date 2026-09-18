@@ -153,8 +153,12 @@ button.on { background: #2a6ba3; border-color: #4a90d0; }
   border: 1px solid var(--line); border-radius: var(--radius);
   padding: 10px; margin-bottom: 9px;
 }
-.uc-art { flex: none; width: 76px; display: flex; align-items: flex-start; justify-content: center; }
-.uc-art canvas { image-rendering: pixelated; width: 76px; height: auto; }
+.uc-art { flex: none; width: 92px; }
+.uc-art canvas.portrait {
+  width: 92px; height: 104px; display: block;
+  background: radial-gradient(ellipse at 50% 88%, rgba(255,255,255,0.05), transparent 70%);
+  border-radius: 6px;
+}
 .uc-body { min-width: 0; flex: 1; }
 .uc-name { font-weight: 650; }
 .uc-sub { font-size: 11.5px; color: var(--ink-dim); }
@@ -174,6 +178,16 @@ button.on { background: #2a6ba3; border-color: #4a90d0; }
 .wb-line { font-family: var(--mono); font-size: 12.5px; }
 .wb-note { font-size: 11.5px; color: var(--ink-dim); margin-top: 3px; }
 .wb-note.bad { color: var(--bad); }
+
+.uc-prov { margin: 6px 0; padding: 6px 8px; border-left: 2px solid var(--line); }
+.prov-line { font-size: 11.5px; color: var(--ink-dim); }
+.prov-line.mut { color: var(--accent); }
+
+.taste-arch {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-dim); margin-top: 9px;
+}
+.taste-list { font-size: 12.5px; }
 
 /* --- bastion picker ------------------------------------------------------- */
 
@@ -203,7 +217,7 @@ button.on { background: #2a6ba3; border-color: #4a90d0; }
   position: relative; padding: 4px 6px 4px 4px; display: flex;
   align-items: center; gap: 5px; min-height: 46px;
 }
-.slot canvas { image-rendering: pixelated; width: 38px; height: 38px; }
+.slot canvas.slot-art { width: 40px; height: 46px; display: block; }
 .slot.picked { border-color: var(--accent); background: #1b3448; }
 .slot.empty { opacity: 0.38; }
 .slot-count { font-family: var(--mono); font-size: 12px; }

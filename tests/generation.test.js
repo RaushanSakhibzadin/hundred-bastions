@@ -7,7 +7,9 @@ import assert from 'node:assert/strict';
 import { Rng, mix32, hashString, noise2 } from '../src/core/rng.js';
 import { generateUnit } from '../src/core/balance.js';
 import { nameUnit, nameBastion } from '../src/core/naming.js';
-import { unitSpriteGrid, structureSpriteGrid, unitPalette, structurePalette, GRID } from '../src/core/spritegen.js';
+import { structureSpriteGrid, structurePalette } from '../src/core/spritegen.js';
+import { buildCreature, poseCreature, palette } from '../src/core/morph.js';
+import { randomGenome } from '../src/core/genome.js';
 import { generateBastion } from '../src/game/bastion.js';
 import { STRUCTURES, STRUCTURE_BY_ID } from '../src/game/structures.js';
 import { createBase, economy, coverageField, place, remove, GRID_W, GRID_H } from '../src/game/base.js';
@@ -55,44 +57,88 @@ test('noise2 is stable per lattice point', () => {
   assert.notEqual(noise2(42, 1, 1), noise2(43, 1, 1));
 });
 
-test('every unit sprite has a body and fits its grid', () => {
-  for (let s = 0; s < 1500; s++) {
+test('every creature builds a complete body', () => {
+  for (let s = 0; s < 1200; s++) {
     const unit = generateUnit(s);
-    const { grid, size } = unitSpriteGrid(unit);
-    assert.equal(size, GRID);
-    assert.equal(grid.length, GRID * GRID);
-    const filled = grid.reduce((a, v) => a + (v > 1 ? 1 : 0), 0);
-    assert.ok(filled > 12, `seed ${s} produced an almost empty sprite (${filled} cells)`);
-    assert.ok(filled < GRID * GRID, `seed ${s} filled the whole grid`);
+    const c = buildCreature(unit);
+    assert.ok(c.parts.length >= 4, `seed ${s} produced only ${c.parts.length} parts`);
+    assert.ok(c.parts.some((p) => p.name === 'torso'), `seed ${s} has no torso`);
+    assert.ok(c.parts.some((p) => p.name === 'head'), `seed ${s} has no head`);
+    assert.ok(c.parts.some((p) => p.name.startsWith('leg')), `seed ${s} has no legs`);
+    assert.ok(c.bounds.w > 0 && c.bounds.h > 0, `seed ${s} has empty bounds`);
+    for (const part of c.parts) {
+      for (const shape of part.shapes) {
+        if (shape.kind === 'poly') {
+          assert.ok(shape.pts.length >= 3, `seed ${s}: degenerate polygon in ${part.name}`);
+          for (const [x, y] of shape.pts) {
+            assert.ok(Number.isFinite(x) && Number.isFinite(y), `seed ${s}: NaN point in ${part.name}`);
+          }
+        } else {
+          assert.ok(shape.r[0] > 0 && shape.r[1] > 0, `seed ${s}: degenerate ellipse in ${part.name}`);
+        }
+      }
+    }
   }
 });
 
-test('unit sprite bodies are mirrored, with one-sided hardware on top', () => {
-  // The creature is generated on the left half and mirrored; the weapon, and
-  // the splash charge dots, are then stamped on afterwards and are deliberately
-  // one-sided. So the sprite is mostly but not perfectly symmetric. A broken
-  // mirror would score around 50% here, which is what this is really guarding.
-  for (const seed of [4242, 7, 99, 100031, 555555]) {
-    const { grid, size } = unitSpriteGrid(generateUnit(seed));
-    const half = (size - 1) / 2;
-    let matches = 0, total = 0;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < half; x++) {
-        total++;
-        if (!!grid[y * size + x] === !!grid[y * size + (size - 1 - x)]) matches++;
+test('fliers get wings and walkers do not', () => {
+  let fliers = 0, walkers = 0;
+  for (let s = 0; s < 600; s++) {
+    const unit = generateUnit(s);
+    const hasWings = buildCreature(unit).parts.some((p) => p.name.startsWith('wing'));
+    assert.equal(hasWings, !!unit.flying, `seed ${s}: wings ${hasWings}, flying ${unit.flying}`);
+    if (unit.flying) fliers++; else walkers++;
+  }
+  assert.ok(fliers > 0 && walkers > 0, 'the sample had no variety to test');
+});
+
+test('posing is continuous and bounded', () => {
+  const unit = generateUnit(4242);
+  const c = buildCreature(unit);
+  let prev = null;
+  for (let i = 0; i <= 60; i++) {
+    const t = i / 30;
+    const pose = poseCreature(c, t, { moving: true });
+    assert.equal(pose.transforms.length, c.parts.length);
+    for (const tr of pose.transforms) {
+      assert.ok(Number.isFinite(tr.rot), 'NaN rotation');
+      assert.ok(Math.abs(tr.rot) < Math.PI, `rotation ${tr.rot} is past half a turn`);
+      assert.ok(tr.scaleY > 0.5 && tr.scaleY < 1.5, `scale ${tr.scaleY} is extreme`);
+    }
+    // No part may jump between adjacent frames: animation is sampled from
+    // continuous functions, so a discontinuity means a real bug.
+    if (prev) {
+      for (let k = 0; k < prev.length; k++) {
+        assert.ok(Math.abs(prev[k].rot - pose.transforms[k].rot) < 0.6,
+          `part ${c.parts[k].name} jumped ${Math.abs(prev[k].rot - pose.transforms[k].rot).toFixed(2)} rad between frames`);
       }
     }
-    const pct = matches / total;
-    assert.ok(pct > 0.85, `seed ${seed}: symmetry was only ${(pct * 100).toFixed(0)}%`);
-    assert.ok(pct < 1, `seed ${seed}: sprite is perfectly symmetric, so the hardware is missing`);
+    prev = pose.transforms;
   }
+});
+
+test('an idle creature still moves, and a walking one moves more', () => {
+  const c = buildCreature(generateUnit(77));
+  const spread = (moving) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < 120; i++) {
+      const r = poseCreature(c, i / 30, { moving }).transforms
+        .reduce((a, t) => a + Math.abs(t.rot), 0);
+      lo = Math.min(lo, r); hi = Math.max(hi, r);
+    }
+    return hi - lo;
+  };
+  const idle = spread(false), walking = spread(true);
+  assert.ok(idle > 0, 'an idle creature is frozen');
+  assert.ok(walking > idle, `walking (${walking.toFixed(3)}) should move more than idle (${idle.toFixed(3)})`);
 });
 
 test('palettes are complete and well formed', () => {
   for (let s = 0; s < 400; s++) {
-    const pal = unitPalette(generateUnit(s));
-    assert.equal(pal.length, 7);
-    for (const c of pal.slice(1)) assert.match(c, /^hsl\(/);
+    const pal = palette(generateUnit(s));
+    for (const k of ['body', 'shade', 'light', 'outline', 'accent', 'glow']) {
+      assert.match(pal[k], /^hsl\(/, `seed ${s}: ${k} is "${pal[k]}"`);
+    }
   }
   for (const def of STRUCTURES) {
     const pal = structurePalette(def);

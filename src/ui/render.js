@@ -7,7 +7,8 @@
 // this one is obviously in conversation with.
 
 import { STRUCTURE_BY_ID } from '../game/structures.js';
-import { structureSprite, unitSprite } from './sprites.js';
+import { structureSprite } from './sprites.js';
+import { drawCreature, creatureFor } from './creature.js';
 
 export const TILE = 22;
 
@@ -196,37 +197,50 @@ export function drawRangeRing(ctx, cam, canvas, s, def) {
 
 // --- units ------------------------------------------------------------------
 
+// How tall a creature stands, in tiles, by what it costs. Bigger units are
+// bigger, which is the one thing about a unit nobody should have to read.
+function tilesTall(supply) {
+  return Math.min(4.0, 1.9 + supply * 0.17);
+}
+
 export function drawUnit(ctx, cam, canvas, e, tick) {
   const px = TILE * cam.zoom;
   const p = worldToScreen(cam, canvas, e.x, e.y);
-  if (p.x < -40 || p.y < -40 || p.x > canvas.width + 40 || p.y > canvas.height + 40) return;
+  if (p.x < -60 || p.y < -90 || p.x > canvas.width + 60 || p.y > canvas.height + 60) return;
 
-  // The sprite grid carries a lot of transparent margin, so the drawn box has
-  // to be well over one tile for the body inside it to read at all. These
-  // multipliers are the drawn box, not the creature.
-  const size = px * (e.unit.supply >= 8 ? 4.2 : e.unit.supply >= 4 ? 3.2 : 2.5);
-  // A two-frame bob, computed rather than stored. Sprites have no animation
-  // frames; the motion is entirely in where we draw them.
-  const bob = Math.sin((tick + e.id * 7) * 0.22) * px * 0.06;
-  const lift = e.flying ? px * 0.55 : 0;
+  const c = creatureFor(e.unit);
+  const scale = (tilesTall(e.unit.supply) * px) / c.bounds.h;
+  const lift = e.flying ? px * 0.7 : 0;
 
   if (e.flying) {
     ctx.fillStyle = 'rgba(0,0,0,0.30)';
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y + px * 0.15, size * 0.22, size * 0.10, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x, p.y + px * 0.12, c.bounds.w * scale * 0.24, px * 0.13, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  const sprite = unitSprite(e.unit, 3);
-  ctx.drawImage(sprite, p.x - size / 2, p.y - size / 2 - lift + bob, size, size);
+  // Attack and hurt both decay over a few ticks, so a blow reads as a flinch
+  // rather than a single-frame flicker nobody sees.
+  const state = {
+    moving: e.moving,
+    attacking: Math.max(0, 1 - (tick - e.lastAttackTick) / 9),
+    hurt: Math.max(0, 1 - (tick - e.lastHitTick) / 8) * 0.8,
+  };
+
+  ctx.save();
+  ctx.translate(p.x, p.y - lift);
+  if (e.facing < 0) ctx.scale(-1, 1);
+  drawCreature(ctx, e.unit, 0, 0, scale, tick / 30, state);
+  ctx.restore();
 
   const frac = e.hp / e.maxHp;
   if (frac < 1) {
-    const bw = size * 0.6;
+    const bw = Math.max(14, c.bounds.w * scale * 0.55);
+    const by = p.y - lift - c.bounds.h * scale - 5;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(p.x - bw / 2, p.y - size / 2 - lift + bob - 4, bw, 2.5);
+    ctx.fillRect(p.x - bw / 2, by, bw, 2.8);
     ctx.fillStyle = frac > 0.5 ? '#7fe08a' : frac > 0.25 ? '#e0c04a' : '#e05a4a';
-    ctx.fillRect(p.x - bw / 2, p.y - size / 2 - lift + bob - 4, bw * frac, 2.5);
+    ctx.fillRect(p.x - bw / 2, by, bw * frac, 2.8);
   }
 }
 

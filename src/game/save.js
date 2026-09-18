@@ -5,25 +5,25 @@
 
 import { createBase, tickResources, economy, BASE_SUPPLY } from './base.js';
 import { makeUnit } from './roster.js';
+import { randomGenome } from '../core/genome.js';
+import { emptyLineage, admit, prune } from './lineage.js';
 
-const KEY = 'hundred-bastions/save/v1';
-export const SAVE_VERSION = 1;
+const KEY = 'hundred-bastions/save/v2';
+export const SAVE_VERSION = 2;
 
 export function newGame() {
   const state = {
     version: SAVE_VERSION,
     base: createBase(),
-    // Three starting units, fixed seeds so every new player gets the same
-    // comprehensible opening hand rather than a random one they cannot read.
-    // These three were picked out of the seed space for being plain -- a wall
-    // of a Vanguard, a fragile Marksman, a fast Skirmisher, no special
-    // abilities and no targeting restrictions between them. They teach the
-    // three axes the generator works on before it starts combining them.
+    // Three founder genomes: a wall of a Vanguard, a fragile Marksman, a fast
+    // Skirmisher. Fixed seeds, so every new player starts from the same three
+    // creatures -- and then, within an hour, from three nobody else has.
     roster: [
-      { seed: 100031, level: 1 },  // Vanguard, 4 supply, walks in front
-      { seed: 100010, level: 1 },  // Marksman, 2 supply, kills from range
-      { seed: 100012, level: 1 },  // Skirmisher, 3 supply, gets there first
+      { genome: randomGenome('vanguard', 100031), level: 1 },
+      { genome: randomGenome('marksman', 100010), level: 1 },
+      { genome: randomGenome('skirmisher', 100012), level: 1 },
     ],
+    lineage: emptyLineage(),
     // Filled in below, once we know what those seeds actually cost in supply.
     warband: [],
     campaign: { highest: 0, cleared: [] },
@@ -38,7 +38,7 @@ export function newGame() {
 // seeds are fixed, but their supply costs come out of the generator, so a
 // hand-written count would silently break the moment a balance constant moves.
 function defaultWarband(state) {
-  const units = state.roster.map((r) => makeUnit(r.seed, r.level));
+  const units = state.roster.map((r) => makeUnit(r.genome, r.level));
   const cap = economy(state.base).supply ?? BASE_SUPPLY;
   const band = [];
   let used = 0;
@@ -54,7 +54,12 @@ function defaultWarband(state) {
 }
 
 export function hydrate(save) {
-  save.units = save.roster.map((r) => makeUnit(r.seed, r.level));
+  if (!save.lineage) save.lineage = emptyLineage();
+  save.units = save.roster.map((r) => makeUnit(r.genome, r.level));
+  // Anything in the roster belongs in its own gene pool: those are the
+  // creatures you have most clearly endorsed, by still owning them.
+  for (const r of save.roster) admit(save.lineage, r.genome);
+  prune(save.lineage, new Set(save.roster.map((r) => r.genome.id)));
   tickResources(save.base);
   return save;
 }

@@ -128,6 +128,9 @@ function spawn(battle, warbandIndex, x, y, n) {
       targeting: unit.targeting, ability: unit.ability,
       alive: true, cooldown: 0, target: null, lastHitTick: -999,
       engagedTick: -999, spawnTick: battle.tick, value: 0,
+      // Rendering state. The simulation owns it because only the simulation
+      // knows when a blow actually landed.
+      lastAttackTick: -999, facing: 1, moving: false,
     });
   }
 }
@@ -381,6 +384,11 @@ function kill(battle, e, source) {
 }
 
 function attackFrom(battle, source, target) {
+  source.lastAttackTick = battle.tick;
+  if (source.side === 'attacker') {
+    source.facing = target.x >= source.x ? 1 : -1;
+    source.moving = false;
+  }
   applyDamage(battle, source, target);
   if (source.splashRadius > 0.3) {
     const r = source.splashRadius;
@@ -437,6 +445,7 @@ export function step(battle) {
 
     if (dist <= reach) {
       e.engagedTick = t;
+      e.moving = false;
       if (e.cooldown <= 0) { attackFrom(battle, e, target); e.cooldown = 1 / e.attackRate; }
       continue;
     }
@@ -465,6 +474,8 @@ export function step(battle) {
         }
       }
     }
+    if (Math.abs(mx) > 0.15) e.facing = mx >= 0 ? 1 : -1;
+    e.moving = true;
     e.x = clamp(e.x + mx * e.speed * DT, 0.2, battle.w - 0.2);
     e.y = clamp(e.y + my * e.speed * DT, 0.2, battle.h - 0.2);
   }

@@ -1,13 +1,20 @@
-// Grids -> pixels. Everything is cached by key, because a 19x19 grid is cheap
-// to compute once and expensive to compute sixty times a second.
+// Structure grids -> pixels. Cached by key, because a 16x16 grid is cheap to
+// compute once and wasteful to compute sixty times a second.
+//
+// Creatures do not come through here. They are vector, and live in creature.js.
 
-import { unitSpriteGrid, structureSpriteGrid, unitPalette, structurePalette } from '../core/spritegen.js';
+import { structureSpriteGrid, structurePalette } from '../core/spritegen.js';
 
 const cache = new Map();
 
-function paint(gridResult, palette, scale) {
-  const { grid, size } = gridResult;
-  const c = document.createElement('canvas');
+export function structureSprite(def, level, scale = 3) {
+  const key = `${def.id}:${level}:${scale}`;
+  let c = cache.get(key);
+  if (c) return c;
+
+  const { grid, size } = structureSpriteGrid(def, def.id + ':' + level);
+  const palette = structurePalette(def);
+  c = document.createElement('canvas');
   c.width = size * scale;
   c.height = size * scale;
   const ctx = c.getContext('2d');
@@ -20,20 +27,7 @@ function paint(gridResult, palette, scale) {
       ctx.fillRect(x * scale, y * scale, scale, scale);
     }
   }
-  return c;
-}
-
-export function unitSprite(unit, scale = 3) {
-  const key = `u:${unit.seed}:${scale}`;
-  let c = cache.get(key);
-  if (!c) { c = paint(unitSpriteGrid(unit), unitPalette(unit), scale); cache.set(key, c); }
-  return c;
-}
-
-export function structureSprite(def, level, scale = 3) {
-  const key = `s:${def.id}:${level}:${scale}`;
-  let c = cache.get(key);
-  if (!c) { c = paint(structureSpriteGrid(def, def.id + ':' + level), structurePalette(def), scale); cache.set(key, c); }
+  cache.set(key, c);
   return c;
 }
 

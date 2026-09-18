@@ -1,36 +1,20 @@
 // The roster: which units you have, and how you get more.
 //
-// Recruitment rolls candidates from the seed space rather than unlocking from a
-// fixed list. You are always choosing between three specific units, which is a
-// better decision than "the next thing on the tree is now affordable".
+// Recruitment offers three candidates bred from the creatures you have treated
+// well -- see lineage.js. You are always choosing between three specific
+// units, which is a better decision than "the next thing on the tree is now
+// affordable", and the choice itself is what steers the next three.
 
-import { generateUnit } from '../core/balance.js';
+import { unitFromGenome } from '../core/balance.js';
 import { nameUnit } from '../core/naming.js';
-import { Rng } from '../core/rng.js';
 
 export const RECRUIT_COST = { ore: 0, flux: 260 };
 export const LEVEL_COST_BASE = { ore: 380, flux: 240 };
 
-export function makeUnit(seed, level = 1) {
-  const u = generateUnit(seed, { level });
+export function makeUnit(genome, level = 1) {
+  const u = unitFromGenome(genome, level);
   u.name = nameUnit(u);
   return u;
-}
-
-// Three candidates from a roll seed. The roll seed is stored, so the offer
-// survives a reload -- you cannot reroll by refreshing the page, which is the
-// kind of thing that quietly ruins an economy.
-export function rollCandidates(rollSeed, { forbid = [] } = {}) {
-  const rng = new Rng(rollSeed ^ 0x524f4c4c);
-  const out = [];
-  let guard = 0;
-  while (out.length < 3 && guard++ < 60) {
-    const seed = rng.next();
-    if (forbid.includes(seed)) continue;
-    if (out.some((u) => u.seed === seed)) continue;
-    out.push(makeUnit(seed));
-  }
-  return out;
 }
 
 export function levelCost(level) {
