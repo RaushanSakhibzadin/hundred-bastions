@@ -22,7 +22,10 @@ export const DEF_LEVEL_STEP = 1.18;   // steeper than units: defenders are outnu
 export const STRUCTURES = [
   {
     id: 'citadel', name: 'Citadel', category: 'core', footprint: 4, visualHeight: 0.9,
-    maxLevel: 12, cost: { ore: 0, flux: 0 }, upkeep: 0, baseHp: 2600, armor: 90,
+    // The citadel is never *placed*, only upgraded, but its cost still has to
+    // be real: it gates every other building's count limit, and at zero cost
+    // it was free to max out on turn one.
+    maxLevel: 12, cost: { ore: 850, flux: 520 }, upkeep: 0, baseHp: 2600, armor: 90,
     armorClass: 'plate', limitPerCitadelLevel: () => 1,
     blurb: 'The heart of the holding. Losing it ends the siege immediately.',
   },
@@ -64,7 +67,7 @@ export const STRUCTURES = [
     armorClass: 'plate', damageType: 'kinetic', budgetScale: 1.0,
     traits: { range: 6.5, speed: 0, splashRadius: 0, flying: false, attackRate: 1.1, targeting: 'any', ability: 'none', targets: 1 },
     targetsAir: true, offenseShare: 0.62,
-    limitPerCitadelLevel: (l) => 1 + Math.floor(l * 0.9),
+    limitPerCitadelLevel: (l) => 1 + Math.round(l * 0.9),
     blurb: 'The workhorse. Hits anything, ground or air, at good range.',
   },
   {
