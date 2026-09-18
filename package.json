@@ -1,0 +1,15 @@
+{
+  "name": "hundred-bastions",
+  "version": "0.1.0",
+  "description": "An open-source, donation-funded base-building siege game. Every unit, sprite and enemy holding is generated from a seed by a published balance formula.",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "repository": { "type": "git", "url": "https://github.com/RaushanSakhibzadin/hundred-bastions.git" },
+  "homepage": "https://raushansakhibzadin.github.io/hundred-bastions/",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "python3 -m http.server 8000"
+  },
+  "keywords": ["game", "procedural-generation", "canvas", "open-source-game", "base-builder"],
+  "private": false
+}

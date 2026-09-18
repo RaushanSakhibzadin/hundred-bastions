@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hundred Bastions</title>
+<meta name="description" content="An open-source, donation-funded base-building siege game that runs in your browser. Every unit and every enemy holding is generated from maths, not from an asset pack.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23131a22'/><path d='M3 12V6l2-2 3 2 3-2 2 2v6z' fill='%23e0a24a'/></svg>">
+<link rel="stylesheet" href="src/ui/style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="wordmark">Hundred Bastions</span>
+  </div>
+
+  <div class="resources" aria-label="Resources">
+    <div class="res ore">
+      <span class="res-label">Ore</span>
+      <span class="res-value"><b id="res-ore">0</b> / <span id="res-ore-cap">0</span></span>
+      <span class="res-rate" id="res-net-ore">+0/min</span>
+    </div>
+    <div class="res flux">
+      <span class="res-label">Flux</span>
+      <span class="res-value"><b id="res-flux">0</b> / <span id="res-flux-cap">0</span></span>
+      <span class="res-rate" id="res-net-flux">+0/min</span>
+    </div>
+    <div class="res supply">
+      <span class="res-label">Supply</span>
+      <span class="res-value" id="res-supply">0 / 0</span>
+      <span class="res-rate">Citadel <b id="citadel-level">1</b></span>
+    </div>
+  </div>
+
+  <nav class="tabs">
+    <button data-screen="holding" class="active">Holding</button>
+    <button data-screen="warband">Warband</button>
+    <button data-screen="siege">Siege</button>
+    <button data-screen="support">About &amp; Support</button>
+  </nav>
+</header>
+
+<main>
+  <section id="stage">
+    <canvas id="field"></canvas>
+    <div id="battle-bar" hidden>
+      <div class="bb-status">
+        <div class="bb-progress"><div id="battle-progress"></div></div>
+        <span id="battle-pct">0%</span>
+        <span id="battle-time">0s</span>
+        <span id="battle-alive">0 standing</span>
+      </div>
+      <div id="deploy-slots" class="deploy-slots"></div>
+      <div class="bb-controls">
+        <button id="btn-play" class="primary">Pause</button>
+        <button id="btn-recall" title="Pull back anything not yet engaged (R)">Recall</button>
+        <button id="btn-rally" title="Point your warband at a place on the map">Rally</button>
+        <button id="btn-clear-rally">Clear rally</button>
+        <span class="speeds">
+          <button data-speed="1" class="on">1x</button>
+          <button data-speed="2">2x</button>
+          <button data-speed="4">4x</button>
+        </span>
+        <button id="btn-abandon" class="danger">Abandon</button>
+      </div>
+      <p id="deploy-hint" class="hint"></p>
+    </div>
+  </section>
+
+  <aside id="side">
+
+    <!-- Holding ------------------------------------------------------------ -->
+    <div data-panel="holding">
+      <h2>Build the holding</h2>
+      <p class="hint" id="build-hint"></p>
+      <label id="coverage-row" class="check">
+        <input type="checkbox" id="coverage-toggle" checked>
+        Show defensive coverage
+      </label>
+      <div id="inspector" class="card" hidden></div>
+      <div id="build-list" class="build-list"></div>
+      <p class="fineprint">
+        Nothing here has a build timer. Buildings go up the moment you can afford
+        them; what limits you is upkeep, which every structure draws against your
+        ore production forever. Demolishing refunds in full, so rearranging your
+        holding is free and you should do it often.
+      </p>
+    </div>
+
+    <!-- Warband ------------------------------------------------------------ -->
+    <div data-panel="warband" hidden>
+      <h2>Warband</h2>
+      <div id="warband-summary" class="card"></div>
+      <h3>Your roster</h3>
+      <div id="roster-list"></div>
+      <h3>Recruit</h3>
+      <p class="hint">Three candidates, generated from the seed space. Taking one
+        rolls the next three. <span id="recruit-cost"></span></p>
+      <div id="recruit-list"></div>
+    </div>
+
+    <!-- Siege -------------------------------------------------------------- -->
+    <div data-panel="siege" hidden>
+      <div id="siege-setup">
+        <h2>Choose a bastion</h2>
+        <p class="hint">Every bastion is generated from its number, so the same
+          number is the same holding for everyone. Scouting is free and always
+          shown — the decision worth making is which warband to bring.</p>
+        <div id="bastion-list" class="bastion-list"></div>
+        <div class="card">
+          <h3>Marching with</h3>
+          <p id="siege-warband"></p>
+          <div class="row">
+            <button id="start-siege" class="primary"></button>
+            <button id="custom-siege">Go to a specific bastion…</button>
+          </div>
+        </div>
+      </div>
+      <div id="battle-info" hidden>
+        <h2 id="battle-title">Siege</h2>
+        <div id="battle-scout" class="card"></div>
+        <div class="card">
+          <h3>While the siege runs</h3>
+          <ul class="keys">
+            <li><b>Tap the blue band</b> — land the selected squad, all of it, in one gesture.</li>
+            <li><b>Long-press</b>, or <b>shift-tap</b> — land a single body instead, to bait one defence.</li>
+            <li><b>1&ndash;9</b> — switch squad. <b>Space</b> — pause. <b>R</b> — recall.</li>
+            <li><b>Rally</b> — point the warband at somewhere specific. It biases target choice; it does not override it.</li>
+            <li><b>Recall</b> — anything not engaged for two seconds walks off the field and can be landed again. A misread costs you seconds, not the attack.</li>
+          </ul>
+        </div>
+      </div>
+      <div id="siege-result" class="card" hidden></div>
+    </div>
+
+    <!-- Support ------------------------------------------------------------ -->
+    <div data-panel="support" hidden>
+      <h2>About &amp; Support</h2>
+      <p>
+        Hundred Bastions is free software. There is nothing to buy, no premium
+        currency, no timers to skip, and no advertising. It is funded entirely by
+        people who choose to donate, and it will keep working whether or not you do.
+      </p>
+      <div class="row">
+        <a class="button primary" href="https://github.com/sponsors/RaushanSakhibzadin" rel="noopener" target="_blank">Sponsor on GitHub</a>
+        <a class="button" href="https://github.com/RaushanSakhibzadin/hundred-bastions" rel="noopener" target="_blank">Source on GitHub</a>
+      </div>
+      <h3>How it works</h3>
+      <p>
+        No art assets ship with this game. Every unit, turret and wall you see is
+        drawn from a 32-bit number through a cellular automaton, a superellipse
+        and a fractal emblem, then painted to a canvas. Every unit's statistics
+        come out of one published equation that holds for all of them, which you
+        can read in <code>docs/BALANCE.md</code>.
+      </p>
+      <h3>Your save</h3>
+      <p class="hint">Everything is stored in this browser and nowhere else.
+        There is no account and no server.</p>
+      <p id="support-stats" class="hint"></p>
+      <div class="row">
+        <button id="export-save">Copy save to clipboard</button>
+        <button id="import-save">Paste a save</button>
+        <button id="wipe-save" class="danger">Start over</button>
+      </div>
+    </div>
+
+  </aside>
+</main>
+
+<div id="toast"></div>
+
+<script type="module">
+  import { boot } from './src/ui/app.js';
+  window.__app = boot();
+</script>
+</body>
+</html>
