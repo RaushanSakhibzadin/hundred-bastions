@@ -24,8 +24,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
         with:
-          # Turn Pages on automatically the first time this runs, so the site
-          # goes live without anyone having to find the repository setting.
+          # Tries to turn Pages on automatically. On most repositories the
+          # workflow token is not permitted to create the Pages site -- it
+          # fails with "Resource not accessible by integration" -- so the first
+          # time, enable it by hand:
+          #
+          #   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+          #
+          # then re-run this workflow. Once the site exists this step succeeds
+          # on its own and never needs touching again.
           enablement: true
       # There is no build step. The repository root is the site.
       - uses: actions/upload-pages-artifact@v3

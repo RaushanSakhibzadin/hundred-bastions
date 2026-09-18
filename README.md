@@ -6,6 +6,12 @@ network requests of any kind.
 
 **Play:** https://raushansakhibzadin.github.io/hundred-bastions/
 
+> First-time setup: the deploy workflow is committed and ready, but GitHub
+> will not let a workflow token switch Pages on by itself. Go to
+> **Settings → Pages → Build and deployment** and set **Source** to
+> **GitHub Actions**, then re-run the "Deploy to GitHub Pages" workflow. It is
+> a one-time click; after that every push to `main` publishes automatically.
+
 Every unit in the game is *generated*, not authored — from a 32-bit seed,
 through one published balance equation. So is every enemy holding, and so is
 every sprite. There are no art assets in this repository; the pixels are
